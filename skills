@@ -44,8 +44,8 @@ workflow:
       - log: "La skill ya existe en el proyecto."
       - log: |
           Comandos disponibles:
-          /axet.skills install skill <- instala una nueva skill en el proyecto
-          /axet.skills uninstall skill <- desinstala la skill del proyecto
+          /skills install skill <- instala una nueva skill en el proyecto
+          /skills uninstall skill <- desinstala la skill del proyecto
       - stop: true
 
   - step: verificar_existencia_remota
