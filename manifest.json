@@ -1,0 +1,9 @@
+{
+  "skills": [
+    {
+      "file": "codeReview",
+      "version": "1.0.2",
+      "description": "Workflow declarativo que orquesta la ejecución del skill code-review para generar un informe crítico basado exclusivamente en el diff entre la rama actual y la rama base indicada, incluyendo comprobaciones de seguridad relacionadas con credenciales y archivos .env."
+    }
+  ]
+}

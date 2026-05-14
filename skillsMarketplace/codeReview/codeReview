@@ -1,0 +1,145 @@
+version: 1.0.2
+
+name: code-review
+description: >
+  Workflow declarativo que orquesta la ejecución del skill code-review para generar
+  un informe crítico basado exclusivamente en el diff entre la rama actual y la rama base
+  indicada por el usuario (por defecto develop), incluyendo comprobaciones de seguridad
+  relacionadas con credenciales y archivos .env heredadas del workflow check_credentials.
+
+skill: code-review
+
+hard_constraints:
+  execution:
+    - No modificar archivos del repositorio
+    - No crear commits
+    - No ejecutar compilaciones
+    - No ejecutar tests
+    - No aplicar refactorizaciones automáticas
+    - No ejecutar herramientas de formateo
+    - No alterar configuración del entorno
+    - No realizar cambios en CI/CD
+    - No generar parches ni aplicar sugerencias automáticamente
+    - Siempre utilizar una tool válida en la respuesta final
+    - No emitir texto fuera del bloque XML de tool
+    - Si la tarea finaliza usar attempt_completion
+    - Si se requiere información adicional usar ask_followup_question
+    - Nunca responder en texto plano
+
+  scope:
+    - Analizar exclusivamente el diff entre origin/<base_branch> y HEAD
+    - No analizar archivos fuera del diff
+    - No asumir contexto no presente en el diff
+    - No inventar información
+    - Si falta información crítica marcarlo explícitamente como riesgo a validar
+
+  git:
+    - Ejecutar `git branch --show-current` para obtener la rama actual
+    - Ejecutar exactamente `git fetch <remote_name> <base_branch>`
+    - Ejecutar exactamente `git --no-pager diff <remote_name>/<base_branch>...HEAD`
+    - No usar comandos git adicionales
+    - No cambiar de rama
+
+  security:
+    - Detectar posibles credenciales hardcodeadas en el diff analizado
+    - Detectar inclusión o modificación de archivos .env en el diff
+    - Validar que archivos .env.example, .env.local, .env.template, .env.dev, .env.test
+      no contengan valores reales con alta entropía
+    - Considerar como patrones sensibles:
+        - api_key, api-key
+        - secret
+        - token
+        - password
+        - client_secret
+        - Authorization: Bearer
+    - Si se detecta credencial real en el diff clasificar como Bloqueante
+    - No modificar archivos, solo reportar
+
+  output:
+    - La salida debe estar completamente en español
+    - Mostrar una única vez en la parte superior la rama actual en formato encabezado grande y en negrita
+    - Cada hallazgo debe seguir exactamente la estructura definida en el skill
+    - Diferenciar claramente bloqueantes de no bloqueantes
+    - No incluir comentarios genéricos sin respaldo en el diff
+    - No modificar código, solo análisis
+
+  formatting:
+    - La salida debe estar en formato Markdown
+    - Respetar exactamente las secciones Citricidad, Resumen, Puntos Críticos (Bloqueantes), Sugerencias (No bloqueantes) y Ejemplo de Refactorización
+    - Cuando haya refactorización incluir siempre Código actual y Código sugerido
+
+inputs:
+  repository:
+    type: string
+    required: false
+    description: Ruta del repositorio Git. Si no se especifica se asume el directorio actual.
+
+  base_branch:
+    type: string
+    required: false
+    default: develop
+    fallbak: main
+    description: Rama base contra la que se comparará la rama actual.
+
+  remote_name:
+    type: string
+    required: false
+    default: origin
+    description: Nombre del remoto.
+
+execution:
+  steps:
+    - name: comprobar-git
+      description: >
+        comprobar git en el sistema usando git -v
+        Si no aparece solicitar instalación del mismo y finalizar ejecución
+
+    - name: obtener-rama-actual
+      description: >
+        Ejecutar `git branch --show-current`
+
+    - name: set-rama-base
+      description: >
+        Si el input base_branch no fue proporcionado explícitamente,
+        usar develop por defecto con fallbak a main
+
+    - name: sincronizar-rama-base
+      description: >
+        Ejecutar exactamente `git fetch <remote_name> <base_branch>`
+
+    - name: obtener-diff
+      description: >
+        Ejecutar exactamente `git --no-pager diff <remote_name>/<base_branch>...HEAD`
+
+    - name: analizar-diff
+      description: >
+        Aplicar el prompt literal definido en el skill code-review.
+        Evaluar calidad, diseño, performance, mantenibilidad,
+        riesgos de regresión y merge readiness, seguridad, conflictos.
+        Incluir adicionalmente:
+          - Detección de credenciales hardcodeadas en el diff
+          - Detección de archivos .env añadidos o modificados
+          - Validación de valores dummy en .env.example y similares
+        No realizar cambios, solo análisis.
+
+output:
+  format: markdown
+  header: encabezado con la rama actual en negrita
+  sections:
+    - Citricidad
+    - Resumen
+    - Puntos Críticos (Bloqueantes)
+    - Sugerencias (No bloqueantes)
+    - Ejemplo de Refactorización
+
+merge_readiness:
+  required: true
+  description: >
+    El informe debe dejar claro si el cambio está listo para merge,
+    si requiere correcciones bloqueantes o si existen riesgos a validar.
+
+compliance:
+  strict_mode: true
+  enforce_literal_prompt: true
+  forbid_side_effects: true
+  enforce_read_only: true

@@ -1,9 +1,7 @@
 version: 1.0.0
 name: aXet.Skills
 purpose: >
-  Workflow para instalar skills desde el repositorio oficial
-  https://github.com/mpalancc/aXet.skills.git
-
+  Workflow para instalar skills desde el marketplace de skills
 author: NTT DATA — GDN-e Spain Booster
 
 environment:
@@ -20,19 +18,25 @@ agent_identity:
 
 inputs:
   command:
-    description: Comando a ejecutar (install | uninstall)
+    description: Comando a ejecutar (install | uninstall | list)
     required: true
   skill:
     description: Nombre exacto de la skill
-    required: true
+    required: not for list
 
 constants:
   remote_repo: https://github.com/mpalancc/aXet.skills.git
-  raw_base: https://raw.githubusercontent.com/mpalancc/aXet.skills/main
+  raw_base: https://raw.githubusercontent.com/mpalancc/aXet.skills/main/skillsMarketplace
   local_workflows_dir: .axetrules/workflows
   local_ntt_dir: NTTScripts
+  comandos_disponibles: >
+    Comandos disponibles:
+    /skills install skill <- instala una nueva skill en el proyecto
+    /skills uninstall skill <- desinstala la skill del proyecto
+    /skills list <- lista los skills disponibles en el marketplace de skills
 
-workflow:
+
+workflow-install:
 
   - step: validar_existencia_local
     description: >
@@ -42,10 +46,7 @@ workflow:
     path: "{local_workflows_dir}/{skill}"
     on_true:
       - log: "La skill ya existe en el proyecto."
-      - log: |
-          Comandos disponibles:
-          /skills install skill <- instala una nueva skill en el proyecto
-          /skills uninstall skill <- desinstala la skill del proyecto
+      - log: "{comandos_disponibles}"
       - stop: true
 
   - step: verificar_existencia_remota
