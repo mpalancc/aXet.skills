@@ -1,0 +1,112 @@
+version: 1.0.0
+name: aXet.Skills
+purpose: >
+  Workflow para instalar skills desde el repositorio oficial
+  https://github.com/mpalancc/aXet.skills.git
+
+author: NTT DATA — GDN-e Spain Booster
+
+environment:
+  ide: Visual Studio Code
+  runtime:
+    primary: Python 3.x
+  shell: >
+    Permitido para creación de carpetas y archivos así como para la
+    eliminación únicamente de los archivos descargados por el workflow.
+
+agent_identity:
+  role: Instalador autónomo de skills para aXet.plugin
+  tone: Técnico, directo y automatizado.
+
+inputs:
+  command:
+    description: Comando a ejecutar (install | uninstall)
+    required: true
+  skill:
+    description: Nombre exacto de la skill
+    required: true
+
+constants:
+  remote_repo: https://github.com/mpalancc/aXet.skills.git
+  raw_base: https://raw.githubusercontent.com/mpalancc/aXet.skills/main
+  local_workflows_dir: .axetrules/workflows
+  local_ntt_dir: NTTScripts
+
+workflow:
+
+  - step: validar_existencia_local
+    description: >
+      Comprobar si ya existe la skill en el directorio local
+      .axetrules/workflows/
+    action: check_path_exists
+    path: "{local_workflows_dir}/{skill}"
+    on_true:
+      - log: "La skill ya existe en el proyecto."
+      - log: |
+          Comandos disponibles:
+          /axet.skills install skill <- instala una nueva skill en el proyecto
+          /axet.skills uninstall skill <- desinstala la skill del proyecto
+      - stop: true
+
+  - step: verificar_existencia_remota
+    description: >
+      Comprobar que existe una subcarpeta con el nombre de la skill
+      en el repositorio remoto.
+    action: http_head
+    url: "{raw_base}/{skill}/{skill}"
+    on_false:
+      - error: >
+          ERROR: No existe la skill indicada en el repositorio remoto.
+          Comprueba que el nombre está correctamente escrito.
+      - stop: true
+
+  - step: crear_directorio_workflows
+    description: Crear directorio local si no existe
+    action: ensure_directory
+    path: "{local_workflows_dir}"
+
+  - step: descargar_archivo_principal
+    description: Descargar el archivo YAML principal de la skill
+    action: http_download
+    url: "{raw_base}/{skill}/{skill}"
+    destination: "{local_workflows_dir}/{skill}"
+
+  - step: verificar_manifest
+    description: >
+      Intentar descargar el archivo manifest.json si existe.
+    action: http_download_optional
+    url: "{raw_base}/{skill}/manifest.json"
+    destination: "__manifest_tmp__.json"
+
+  - step: procesar_manifest
+    description: >
+      Si existe manifest.json, usar la propiedad 'files'
+      para descargar archivos adicionales.
+    condition: file_exists("__manifest_tmp__.json")
+    actions:
+
+      - parse_json:
+          file: "__manifest_tmp__.json"
+          assign_to: manifest
+
+      - condition: manifest.files is array
+        actions:
+
+          - ensure_directory:
+              path: "{local_ntt_dir}/{skill}"
+
+          - foreach: manifest.files
+            as: file_name
+            actions:
+              - http_download:
+                  url: "{raw_base}/{skill}/{file_name}"
+                  destination: "{local_ntt_dir}/{skill}/{file_name}"
+              - log: "Archivo descargado: NTTScripts/{skill}/{file_name}"
+
+      - delete_file:
+          path: "__manifest_tmp__.json"
+
+  - step: finalizar
+    description: Confirmar instalación
+    action: log
+    message: "Skill instalada correctamente."
