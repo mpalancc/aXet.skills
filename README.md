@@ -18,6 +18,12 @@ La instalación se realiza automáticamente validando:
 
 ---
 
+## 🌱 Instalación
+
+Descargar el archivo [axet.skills](https://raw.githubusercontent.com/mpalancc/aXet.skills/refs/heads/main/axet.skills) y guardarlo en el directorio `%USERPROFILE%\OneDrive - NTT DATA EMEAL\Documentos\Cline\Workflows` para que sea accesible globalmente en cualquier proyecto
+
+---
+
 ## 🚀 Uso
 
 Comando:
