@@ -157,3 +157,10 @@ workflow-list:
       - log: "Skill: {skill_item.file} v{skill_item.version}"
       - log: "\t{skill_item.description}"
       - log: "----------------------------------------"
+
+common_workflow:
+  - step: finalizar
+    description: Eliminar temporales creados durante cada ejecución de la skill
+    action: delete_temp_files
+    constraint: eliminar sólo los archivos creados en esta ejecución
+    path: "temp/"
