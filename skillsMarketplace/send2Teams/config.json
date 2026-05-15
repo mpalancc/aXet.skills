@@ -1,0 +1,14 @@
+{
+  "aliases": {
+    "alias1": {
+      "webhook_url": "WEBHOOK_URL1",
+      "description": "DESCRIPTION1",
+      "default": false
+    },
+    "alias2": {
+      "webhook_url": "WEBHOOK_URL2",
+      "description": "DESCRIPTION2",
+      "default": false
+    }
+  }
+}

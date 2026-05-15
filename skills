@@ -11,6 +11,14 @@ environment:
   shell: >
     Permitido para creación de carpetas y archivos así como para la
     eliminación únicamente de los archivos descargados por el workflow.
+hard_constraints:
+  execution:
+    - Siempre utilizar una tool válida en la respuesta final
+    - No emitir texto fuera del bloque XML de tool
+    - Si la tarea finaliza usar attempt_completion
+    - Si se requiere información adicional usar ask_followup_question
+    - Nunca responder en texto plano
+
 
 agent_identity:
   role: Instalador autónomo de skills para aXet.plugin
@@ -26,7 +34,7 @@ inputs:
 
 constants:
   remote_repo: https://github.com/mpalancc/aXet.skills.git
-  raw_base: https://raw.githubusercontent.com/mpalancc/aXet.skills/main/skillsMarketplace
+  raw_base: https://raw.githubusercontent.com/mpalancc/aXet.skills/refs/heads/main
   local_workflows_dir: .axetrules/workflows
   local_ntt_dir: NTTScripts
   comandos_disponibles: >
@@ -54,7 +62,7 @@ workflow-install:
       Comprobar que existe una subcarpeta con el nombre de la skill
       en el repositorio remoto.
     action: http_head
-    url: "{raw_base}/{skill}/{skill}"
+    url: "{raw_base}/skillsMarketplace/{skill}/{skill}"
     on_false:
       - error: >
           ERROR: No existe la skill indicada en el repositorio remoto.
@@ -69,25 +77,25 @@ workflow-install:
   - step: descargar_archivo_principal
     description: Descargar el archivo YAML principal de la skill
     action: http_download
-    url: "{raw_base}/{skill}/{skill}"
+    url: "{raw_base}/skillsMarketplace/{skill}/{skill}"
     destination: "{local_workflows_dir}/{skill}"
 
   - step: verificar_manifest
     description: >
       Intentar descargar el archivo manifest.json si existe.
     action: http_download_optional
-    url: "{raw_base}/{skill}/manifest.json"
-    destination: "__manifest_tmp__.json"
+    url: "{raw_base}/skillsMarketplace/{skill}/manifest.json"
+    destination: "temp/__manifest_tmp__.json"
 
   - step: procesar_manifest
     description: >
       Si existe manifest.json, usar la propiedad 'files'
       para descargar archivos adicionales.
-    condition: file_exists("__manifest_tmp__.json")
+    condition: file_exists("temp/__manifest_tmp__.json")
     actions:
 
       - parse_json:
-          file: "__manifest_tmp__.json"
+          file: "temp/__manifest_tmp__.json"
           assign_to: manifest
 
       - condition: manifest.files is array
@@ -100,14 +108,52 @@ workflow-install:
             as: file_name
             actions:
               - http_download:
-                  url: "{raw_base}/{skill}/{file_name}"
+                  url: "{raw_base}/skillsMarketplace/{skill}/{file_name}"
                   destination: "{local_ntt_dir}/{skill}/{file_name}"
               - log: "Archivo descargado: NTTScripts/{skill}/{file_name}"
 
-      - delete_file:
-          path: "__manifest_tmp__.json"
-
   - step: finalizar
     description: Confirmar instalación
-    action: log
-    message: "Skill instalada correctamente."
+    action:
+      - delete_file:
+        path: "temp/__manifest_tmp__.json"
+    message: >
+      Skill {skill} instalada correctamente.
+      Uso: /{skill}
+
+
+workflow-list:
+
+  - step: crear_directorio_temp
+    description: Crear directorio temp si no existe
+    action: ensure_directory
+    path: "temp"
+
+  - step: descargar_manifest_remoto
+    description: Descargar manifest.json y sobreescribir existente de existir
+    action: http_download
+    url: "{raw_base}/manifest.json"
+    destination: "temp/manifest.json"
+
+  - step: validar_manifest
+    description: Validar que el manifest exista
+    action: check_path_exists
+    path: "temp/manifest.json"
+    on_false:
+      - error: "ERROR: No se pudo descargar el manifest del marketplace."
+      - stop: true
+
+  - step: parsear_manifest
+    description: Parsear el manifest descargado
+    action: parse_json
+    file: "temp/manifest.json"
+    assign_to: manifest
+
+  - step: listar_skills
+    description: Listar skills disponibles
+    foreach: manifest.skills
+    as: skill_item
+    actions:
+      - log: "Skill: {skill_item.file} v{skill_item.version}"
+      - log: "\t{skill_item.description}"
+      - log: "----------------------------------------"

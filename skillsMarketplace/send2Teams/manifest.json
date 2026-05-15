@@ -1,0 +1,9 @@
+{
+  "skill": "send2teams",
+  "version":"1.0.5",
+  "files": [
+    "config.json",
+    "send_teams_message.py",
+    "teams_payload_builders.py"
+  ]
+}

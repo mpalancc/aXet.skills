@@ -1,0 +1,269 @@
+version: 1.0.5
+name: aXet.Send2Teams
+purpose: >
+  Workflow para enviar mensajes de texto a un canal de Microsoft Teams 
+  usando webhooks.
+
+author: NTT DATA — GDN-e Spain Booster
+
+environment:
+  ide: Visual Studio Code
+  runtime:
+    primary: Python 3.x
+  shell: Permitido para creación de carpetas y ejecución del script generado.
+  principles:
+    - No exponer URLs reales en logs.
+    - No depender de configuraciones externas preexistentes.
+    - Autocreación idempotente de estructura necesaria.
+    - No sobrescribir archivos existentes.
+    - Mantener compatibilidad Markdown simple con Teams.
+
+agent_identity:
+  role: Orquestador autónomo de notificaciones hacia Microsoft Teams.
+  tone: Técnico, directo y automatizado.
+  principles:
+    - Crear estructura solo si no existe.
+    - Si ya existen archivos → reutilizarlos.
+    - No inventar alias.
+    - No modificar semánticamente el mensaje generado por IA.
+
+execution_flow:
+  type: Secuencial
+  enforce_order: true
+
+inputs:
+  required:
+    - message
+  optional:
+    - alias
+    - title
+    - facts
+    - buttons
+    - color
+    - type
+
+# ✅ Clarificación de comportamiento (no destructiva)
+format_clarification:
+  description: >
+    El comportamiento por defecto del workflow es enviar el contenido
+    exactamente como se proporciona en "message".
+    - Se permiten saltos de línea (\n).
+    - Se permiten listas con guiones.
+    - Se permiten enlaces inline <a href="...">texto</a>.
+    - No se generan botones automáticamente.
+    - No se generan facts automáticamente.
+    Facts y buttons solo se incluirán en la card si el usuario los indica
+    explícitamente mediante los inputs correspondientes.
+
+type_mapping:
+  message: 0078D7
+  success: 28A745
+  warning: FFC107
+  danger: DC3545
+
+logic:
+  - Si se indica "color" explícito → tiene prioridad.
+  - Si se indica "type":
+      - success → verde Bootstrap.
+      - warning → amarillo Bootstrap.
+      - danger → rojo Bootstrap.
+      - message → azul por defecto.
+  - Si no se indica nada → type=message.
+  - Si no se indica titulo:
+      - success → "Éxito".
+      - warning → "Atención"
+      - danger → "Error"
+      - message -> se enviará sin el campo título
+
+  
+phases:
+
+  - id: 1
+    name: bootstrap_estructura
+    objective: Garantizar que existe NTTScripts/send2Teams con config y scripts.
+    logic:
+      - Si no existe carpeta raíz NTTScripts → crearla.
+      - Si no existe NTTScripts/send2Teams → crearla.
+      - Si no existe config.json:
+          - Preguntar al usuario cuántos webhooks desea configurar.
+          - Por cada webhook:
+              - Solicitar alias
+              - Solicitar webhook_url
+              - Solicitar description
+              - Permitir marcar uno como default.
+          - Generar config.json con estructura:
+              |
+                {
+                  "aliases": {
+                    "alias1": {
+                      "webhook_url": "...",
+                      "description": "...",
+                      "default": true
+                    }
+                  }
+                }
+
+      - Si no existe send_teams_message.py → generarlo desde plantilla interna.
+      - Si no existe teams_payload_builders.py → generarlo desde plantilla interna.
+      - Si existen → no sobrescribir.
+      - Si no existe campo "default" en el archivo config.json agregarlo a todas las entradas con valor false
+      - Si solo hay un alias, "default" valdrá true, si hay más, todas las entradas tendrán valor false
+
+  - id: 2
+    name: resolucion_alias
+    objective: Determinar alias automáticamente.
+    logic:
+      - Cargar config.json.
+      - Si alias viene en input → usarlo.
+      - Si no:
+          - Obtener lista de aliases.
+          - Si solo hay uno → usarlo.
+          - Si hay varios:
+              - Si alguno tiene "default": true → usar ese.
+              - Si ninguno es default:
+                  - Mostrar listado alias + description.
+                  - Preguntar cuál usar.
+                  - Validar selección.
+
+  - id: 3
+    name: validacion_entrada
+    objective: Validar inputs.
+    rules:
+      - message obligatorio.
+      - Si title no indicado → usar "Notificación automática".
+
+  - id: 4
+    name: construccion_comando
+    objective: Ejecutar script generado.
+    command_template: |
+      python NTTScripts/send2Teams/send_teams_message.py \
+        --alias "{resolved_alias}" \
+        --title "{title}" \
+        --message "{message}"
+
+  - id: 5
+    name: salida
+    objective: Confirmar resultado JSON del script.
+    expected_output:
+      {
+        "ok": true,
+        "messages_sent": 1
+      }
+
+internal_python_templates:
+
+  teams_payload_builders.py: |
+    import json
+
+    def build_basic_card(title, message, facts=None, buttons=None, color="0078D7"):
+        sections = []
+
+        if facts:
+            fact_list = []
+            for f in facts:
+                key, value = f.split("=", 1)
+                fact_list.append({"name": key, "value": value})
+            sections.append({"facts": fact_list})
+
+        if message:
+            sections.insert(0, {"text": message})
+
+        card = {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "themeColor": color,
+            "summary": title,
+            "title": title,
+            "sections": sections
+        }
+
+        if buttons:
+            actions = []
+            for b in buttons:
+                text, url = b.split("=", 1)
+                actions.append({
+                    "@type": "OpenUri",
+                    "name": text,
+                    "targets": [{"os": "default", "uri": url}]
+                })
+            card["potentialAction"] = actions
+
+        return card
+
+  send_teams_message.py: |
+    import argparse
+    import json
+    import os
+    import sys
+    import urllib.request
+    from teams_payload_builders import build_basic_card
+
+    def load_config():
+        config_path = os.path.join(
+            os.path.dirname(__file__),
+            "config.json"
+        )
+        if not os.path.exists(config_path):
+            print(json.dumps({"ok": False, "error": "config.json no encontrado"}))
+            sys.exit(1)
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def main():
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--alias", required=True)
+        parser.add_argument("--title", required=False)
+        parser.add_argument("--message", required=True)
+        parser.add_argument("--fact", action="append")
+        parser.add_argument("--button", action="append")
+        parser.add_argument("--color", default="0078D7")
+
+        args = parser.parse_args()
+
+        title = args.title if args.title else "Notificación automática"
+
+        # Convertir secuencias \n literales en saltos reales de línea
+        if args.message:
+            args.message = args.message.replace("\\n", "\n")
+
+        config = load_config()
+
+        if args.alias not in config.get("aliases", {}):
+            print(json.dumps({"ok": False, "error": "Alias no configurado"}))
+            sys.exit(1)
+
+        webhook_url = config["aliases"][args.alias]["webhook_url"]
+
+        payload = build_basic_card(
+            title=title,
+            message=args.message,
+            facts=args.fact,
+            buttons=args.button,
+            color=args.color
+        )
+
+        data = json.dumps(payload).encode("utf-8")
+
+        req = urllib.request.Request(
+            webhook_url,
+            data=data,
+            headers={"Content-Type": "application/json"}
+        )
+
+        try:
+            with urllib.request.urlopen(req) as response:
+                response.read()
+            print(json.dumps({"ok": True, "messages_sent": 1}))
+        except Exception as e:
+            print(json.dumps({"ok": False, "error": str(e)}))
+            sys.exit(1)
+
+    if __name__ == "__main__":
+        main()
+
+hard_constraints:
+  - No sobrescribir archivos existentes.
+  - No imprimir webhook_url.
+  - Abort si alias no existe.
+  - Título por defecto obligatorio si no se indica.
